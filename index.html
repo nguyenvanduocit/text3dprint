@@ -1,0 +1,318 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+  <title>Babylon.js sample code</title>
+
+  <!-- Babylon.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
+  <script src="https://assets.babylonjs.com/generated/Assets.js"></script>
+  <script src="https://cdn.babylonjs.com/recast.js"></script>
+  <script src="https://cdn.babylonjs.com/ammo.js"></script>
+  <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
+  <script src="https://cdn.babylonjs.com/cannon.js"></script>
+  <script src="https://cdn.babylonjs.com/Oimo.js"></script>
+  <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+  <script src="https://cdn.babylonjs.com/proceduralTexturesLibrary/babylonjs.proceduralTextures.min.js"></script>
+  <script src="https://cdn.babylonjs.com/postProcessesLibrary/babylonjs.postProcess.min.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.js"></script>
+  <script src="https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+  <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+  <script src="https://cdn.babylonjs.com/addons/babylonjs.addons.min.js"></script>
+
+  <!-- Add Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Remove old styles -->
+  <style>
+    /* Remove all existing styles */
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Update canvas div with additional Tailwind classes -->
+  <div class="w-screen h-screen fixed top-0 left-0">
+    <canvas id="renderCanvas" class="w-full h-full touch-none"></canvas>
+  </div>
+  
+  <!-- Update control panel to be a right sidebar -->
+  <div class="fixed top-0 right-0 h-full w-1/5 bg-black/80 p-4 text-white">
+    <div class="flex flex-col gap-5">
+      <div>
+        <label for="textInput" class="block mb-2">Text:</label>
+        <textarea id="textInput" class="w-full bg-white/10 rounded px-2 py-1 text-white">WIERDTRAKRANGER</textarea>
+      </div>
+      <div>
+        <label for="fontSize" class="block mb-2">Size:<span id="fontSizeValue" class="ml-2">16</span></label>
+        <input type="range" id="fontSize" min="1" max="50" value="16" class="w-full accent-white">
+        
+      </div>
+      <div>
+        <label for="depth" class="block mb-2">Depth:<span id="depthValue" class="ml-2">5</span></label>
+        <input type="range" id="depth" min="1" max="20" value="5" class="w-full accent-white">
+        
+      </div>
+      <div>
+        <label for="fontSelect" class="block mb-2">Font:</label>
+        <select id="fontSelect" class="w-full bg-white/10 rounded px-2 py-1 text-white">
+          <option value="BebasNeueRegular" selected>Bebas Neue</option>
+          <option value="LobsterRegular">Lobster</option>
+          <option value="PlaywriteRegular">Playwrite</option>
+          <option value="SilkscreenBold">Silkscreen Bold</option>
+          <option value="SilkscreenRegular">Silkscreen</option>
+          <option value="BungeeRegular">Bungee</option>
+          <option value="UnicaOneRegular">UnicaOneRegular</option>
+        </select>
+      </div>
+      <div class="flex gap-2">
+        <button id="renderBtn" class="flex-1 bg-blue-500 hover:bg-blue-600 px-4 py-1 rounded">Render</button>
+        <button id="exportBtn" class="flex-1 bg-green-500 hover:bg-green-600 px-4 py-1 rounded">Export STL</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var canvas = document.getElementById("renderCanvas");
+
+    var startRenderLoop = function (engine, canvas) {
+      engine.runRenderLoop(function () {
+        if (sceneToRender && sceneToRender.activeCamera) {
+          sceneToRender.render();
+        }
+      });
+    }
+
+    var engine = null;
+    var scene = null;
+    var sceneToRender = null;
+    var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
+    var createScene = async function () {
+      var scene = new BABYLON.Scene(engine);
+
+      let plasticMaterial = new BABYLON.PBRMetallicRoughnessMaterial("plastic", scene);
+
+      plasticMaterial.baseColor = new BABYLON.Color3(1, 0, 0);
+      plasticMaterial.metallic = 0.6;
+      plasticMaterial.roughness = 0.4;
+      plasticMaterial.environmentIntensity = 0.5;
+      plasticMaterial.reflectivityColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+
+      // Add darker ambient color to scene
+      scene.clearColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+      scene.ambientColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+      
+      // Create a map to store loaded font data
+      window.loadedFonts = {};
+
+      const defaultFont = "BebasNeueRegular";
+      
+      // Load the initial font
+      window.loadedFonts[defaultFont] = await (await fetch(`/fonts/${defaultFont}.json`)).json();
+      var currentFontData = window.loadedFonts[defaultFont];
+      
+      // Create camera with saved position or defaults
+      const savedCamera = JSON.parse(localStorage.getItem('cameraPosition')) || {
+          alpha: 0,
+          beta: 0,
+          radius: 50
+      };
+
+      const camera = new BABYLON.ArcRotateCamera(
+          "camera",
+          savedCamera.alpha,
+          savedCamera.beta,
+          savedCamera.radius,
+          BABYLON.Vector3.Zero(),
+          scene
+      );
+      camera.attachControl(canvas, true);
+      camera.lowerBetaLimit = 0.1;
+      camera.upperBetaLimit = Math.PI - 0.1;
+
+      // Save camera position when it changes
+      let cameraUpdateTimeout;
+      camera.onViewMatrixChangedObservable.add(() => {
+          if (cameraUpdateTimeout) {
+              clearTimeout(cameraUpdateTimeout);
+          }
+          cameraUpdateTimeout = setTimeout(() => {
+              localStorage.setItem('cameraPosition', JSON.stringify({
+                  alpha: camera.alpha,
+                  beta: camera.beta,
+                  radius: camera.radius
+              }));
+          }, 100); // 100ms delay
+      });
+      
+      // Remove the old lighting setup and replace with enhanced lighting
+      // Main hemisphere light for ambient illumination
+      const mainLight = new BABYLON.HemisphericLight("mainLight", new BABYLON.Vector3(0, 1, 0), scene);
+      mainLight.intensity = 1.6;
+      mainLight.groundColor = new BABYLON.Color3(0.2, 0.2, 0.3); // Slight blue tint for reflected light
+      mainLight.diffuse = new BABYLON.Color3(1, 1, 0.95);  // Slightly warm top light
+
+      // Key light - main directional light
+      const keyLight = new BABYLON.DirectionalLight("keyLight", new BABYLON.Vector3(-1, -2, 1), scene);
+      keyLight.intensity = 1.2;
+      keyLight.diffuse = new BABYLON.Color3(1, 0.97, 0.92); // Slightly warm
+      keyLight.specular = new BABYLON.Color3(1, 1, 1);
+
+      // Fill light - softer opposing light
+      const fillLight = new BABYLON.DirectionalLight("fillLight", new BABYLON.Vector3(1, -1, -1), scene);
+      fillLight.intensity = 1.4;
+      fillLight.diffuse = new BABYLON.Color3(0.7, 0.75, 0.85); // Cool blue tint
+      
+      // Rim light - for edge definition
+      const rimLight = new BABYLON.DirectionalLight("rimLight", new BABYLON.Vector3(0, 1, -1), scene);
+      rimLight.intensity = 0.3;
+      rimLight.diffuse = new BABYLON.Color3(0.9, 0.9, 1); // Slightly blue tint
+
+      updateText("WierdTrak", currentFontData);
+
+      document.getElementById('fontSize').addEventListener('input', function(e) {
+        document.getElementById('fontSizeValue').textContent = e.target.value;
+      });
+
+      document.getElementById('depth').addEventListener('input', function(e) {
+        document.getElementById('depthValue').textContent = e.target.value;
+      });
+
+      document.getElementById('renderBtn').addEventListener('click', async function() {
+        // Show loading state
+        const originalText = this.textContent;
+        this.textContent = 'Rendering...';
+        this.disabled = true;
+        
+        // Defer the heavy operation
+        await new Promise(resolve => setTimeout(resolve, 0));
+        updateText(document.getElementById('textInput').value, currentFontData);
+        
+        // Reset button state
+        this.textContent = originalText;
+        this.disabled = false;
+      });
+
+      document.getElementById('exportBtn').addEventListener('click', async function() {
+        const originalText = this.textContent;
+        this.textContent = 'Exporting...';
+        this.disabled = true;
+        BABYLON.STLExport.CreateSTL(window.textMeshes, true);
+        this.textContent = originalText;
+        this.disabled = false;
+      });
+
+      // Add font change handler
+      document.getElementById('fontSelect').addEventListener('change', async function(e) {
+          const fontName = e.target.value;
+          this.disabled = true;
+          
+          try {
+              // Use the correct URL format for Babylon.js fonts
+              const fontUrl = `/fonts/${fontName}.json`;
+              if (!window.loadedFonts[fontName]) {
+                  const response = await fetch(fontUrl);
+                  if (!response.ok) throw new Error(`Font not found: ${fontUrl}`);
+                  window.loadedFonts[fontName] = await response.json();
+              }
+              
+              currentFontData = window.loadedFonts[fontName];
+          } catch (error) {
+              console.error('Error loading font:', error);
+              alert(`Failed to load font: ${fontName}`);
+          } finally {
+              this.disabled = false;
+          }
+      });
+
+      function updateText(text, fontData) {
+          const fontSize = parseInt(document.getElementById('fontSize').value);
+          const depth = parseInt(document.getElementById('depth').value);
+          
+          // Dispose of existing meshes
+          if (window.textMeshes) {
+              window.textMeshes.forEach(mesh => mesh.dispose());
+          }
+          window.textMeshes = [];
+          
+          // Create single text mesh
+          const textMesh = BABYLON.MeshBuilder.CreateText("text", text, fontData, {
+              size: fontSize,
+              resolution: 100,
+              depth: depth,
+          });
+          
+          if (!textMesh) {
+              console.warn(`Failed to create mesh for text: "${text}"`);
+              return;
+          }
+          
+          // Position the text
+          textMesh.rotate(BABYLON.Vector3.Right(), Math.PI/2);
+          textMesh.position.y = depth/2;
+          window.textMeshes = [textMesh];
+          textMesh.material = plasticMaterial;
+      }
+
+      const groundSize =200;
+      const groundDivisions = 20;
+      const ground = BABYLON.MeshBuilder.CreateGround("ground", {
+          width: groundSize,
+          height: groundSize,
+          subdivisions: groundDivisions
+      });
+
+      const gridMaterial = new BABYLON.GridMaterial("gridMaterial", scene);
+      gridMaterial.majorUnitFrequency = 5;
+      gridMaterial.minorUnitVisibility = 0.25;
+      gridMaterial.gridRatio = 1;
+      gridMaterial.backFaceCulling = false;
+      gridMaterial.mainColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+      gridMaterial.lineColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+      gridMaterial.opacity = 0.98;
+
+      ground.material = gridMaterial;
+      ground.position.z = 0
+      ground.position.y = 0
+      ground.position.x = 0
+
+      return scene;
+    };
+    window.initFunction = async function () {
+      var asyncEngineCreation = async function () {
+        try {
+          return createDefaultEngine();
+        } catch (e) {
+          console.log("the available createEngine function failed. Creating the default engine instead");
+          return createDefaultEngine();
+        }
+      }
+
+      window.engine = await asyncEngineCreation();
+      if (!engine) throw 'engine should not be null.';
+      startRenderLoop(engine, canvas);
+      window.scene = createScene();
+    };
+
+    initFunction().then(() => {
+      scene.then(returnedScene => { sceneToRender = returnedScene; });
+    });
+
+    // Resize
+    window.addEventListener("resize", function () {
+      engine.resize();
+    });
+  </script>
+</body>
+
+</html>
