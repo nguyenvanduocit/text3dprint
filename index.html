@@ -277,11 +277,12 @@
           }
           window.textMeshes = [];
           
-          // Create single text mesh
+        // Create single text mesh with increased resolution and solid configuration
           const textMesh = BABYLON.MeshBuilder.CreateText("text", text, fontData, {
-              size: fontSize,
-              resolution: 100,
-              depth: depth,
+            size: fontSize,
+            resolution: 500,
+            depth: depth,
+            sideOrientation: BABYLON.Mesh.DOUBLESIDE,
           });
           
           if (!textMesh) {
@@ -291,9 +292,10 @@
           
           // Position the text
           textMesh.rotate(BABYLON.Vector3.Right(), Math.PI/2);
-          textMesh.position.y = depth/2;
-          window.textMeshes = [textMesh];
+        textMesh.position.y = depth / 2;
           textMesh.material = plasticMaterial;
+        window.textMeshes = [textMesh];
+        
       }
 
       const groundSize =200;
